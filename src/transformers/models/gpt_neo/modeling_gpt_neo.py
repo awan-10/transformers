@@ -324,7 +324,10 @@ class GPTNeoBlock(nn.Module):
         output_attentions=False,
     ):
         residual = hidden_states
+        print(f"input norm b4 ln: {hidden_states.norm()}")
         hidden_states = self.ln_1(hidden_states)
+        print(f"input norm a4 ln: {hidden_states.norm()}")
+        
         attn_outputs = self.attn(
             hidden_states,
             layer_past=layer_past,
@@ -333,6 +336,8 @@ class GPTNeoBlock(nn.Module):
             use_cache=use_cache,
             output_attentions=output_attentions,
         )
+        print(f'output norm a4 attn: {torch.norm(attn_outputs[0])}')
+        exit(0)
         attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
         outputs = attn_outputs[1:]
         # residual connection

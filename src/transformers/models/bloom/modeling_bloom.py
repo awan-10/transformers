@@ -426,6 +426,8 @@ class BloomBlock(nn.Module):
     ):
         # hidden_states: [batch_size, seq_length, hidden_size]
 
+        print(f"input norm b4 ln: {hidden_states.norm()}")
+        
         # Layer norm at the beginning of the transformer layer.
         layernorm_output = self.input_layernorm(hidden_states)
 
@@ -435,6 +437,8 @@ class BloomBlock(nn.Module):
         else:
             residual = hidden_states
 
+        print(f"input norm after ln: {layernorm_output.norm()}")
+        
         # Self attention.
         attn_outputs = self.self_attention(
             layernorm_output,
@@ -462,6 +466,8 @@ class BloomBlock(nn.Module):
         # MLP.
         output = self.mlp(layernorm_output, residual)
 
+        print(f"after mlp: {output.norm()}")
+        #exit(0)
         if use_cache:
             outputs = (output,) + outputs
         else:
