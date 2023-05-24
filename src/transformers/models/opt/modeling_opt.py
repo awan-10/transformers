@@ -132,7 +132,7 @@ class OPTAttention(nn.Module):
         bias: bool = True,
     ):
         super().__init__()
-        #bias = False
+        self.bias = bias
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.dropout = dropout
@@ -203,6 +203,9 @@ class OPTAttention(nn.Module):
             # if encoder bi-directional self-attention `past_key_value` is always `None`
             past_key_value = (key_states, value_states)
 
+        # print(f"key_states: {key_states.norm()}")
+        # print(f"value_states: {value_states.norm()}")
+
         proj_shape = (bsz * self.num_heads, -1, self.head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
         key_states = key_states.view(*proj_shape)
@@ -268,7 +271,19 @@ class OPTAttention(nn.Module):
         # partitioned aross GPUs when using tensor-parallelism.
         attn_output = attn_output.reshape(bsz, tgt_len, self.embed_dim)
 
+        print(f"hf context_outputtn_ctx: {attn_output.norm()}")
+
+        #######
+        print(f"self.out_proj weight: {self.out_proj.weight.data.norm()}")
+        print(f"self.out_proj bias: {self.out_proj.bias.data.norm()}")
         attn_output = self.out_proj(attn_output)
+        print("BIAS:" + str(self.bias))
+        print(type(self.out_proj))
+
+
+
+        #######
+        print(f"hf attn_output after out_proj: {attn_output.norm()}")
 
         return attn_output, attn_weights_reshaped, past_key_value
 
@@ -323,6 +338,8 @@ class OPTDecoderLayer(nn.Module):
         print(f"b4 ln: norm = {hidden_states.norm()}, tensor = {hidden_states}")
 
         residual = hidden_states
+
+        print(f"hf hidden_states before layer norm: {hidden_states.norm()}")
 
         # 125m, 1.7B, ..., 175B applies layer norm BEFORE attention
         if self.do_layer_norm_before:
@@ -385,10 +402,12 @@ class OPTDecoderLayer(nn.Module):
         print(f"after fc2: {hidden_states.norm()}")
  
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
-
         print(f"after mlp: {hidden_states.norm()}")
  
         hidden_states = (residual + hidden_states).view(hidden_states_shape)
+
+        print(f"hf residual: {residual.norm()}")
+        print(f"hf output after mlp: {hidden_states.norm()}")
 
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
@@ -408,6 +427,12 @@ class OPTDecoderLayer(nn.Module):
 
         #print(f"hf opt layer end :{outputs.norm()}")
         #exit(0)
+        print(f"hf final output: {outputs[0].norm()}")
+        print(f"hf key states: {outputs[1][0].norm()}")
+        print(f"hf value states: {outputs[1][1].norm()}")
+
+        import pdb; pdb.set_trace()
+
         return outputs
 
 
