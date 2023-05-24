@@ -464,6 +464,8 @@ class BloomBlock(nn.Module):
             residual = attention_output
 
         # MLP.
+        print(f"before mlp: layernorm_output={layernorm_output.norm()}, residual={residual.norm()}")
+
         output = self.mlp(layernorm_output, residual)
 
         print(f"after mlp: {output.norm()}")

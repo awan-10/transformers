@@ -132,6 +132,7 @@ class OPTAttention(nn.Module):
         bias: bool = True,
     ):
         super().__init__()
+        #bias = False
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.dropout = dropout
@@ -319,11 +320,15 @@ class OPTDecoderLayer(nn.Module):
             past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
         """
 
+        print(f"b4 ln: norm = {hidden_states.norm()}, tensor = {hidden_states}")
+
         residual = hidden_states
 
         # 125m, 1.7B, ..., 175B applies layer norm BEFORE attention
         if self.do_layer_norm_before:
             hidden_states = self.self_attn_layer_norm(hidden_states)
+
+        print(f"a4 ln: norm = {hidden_states.norm()}, tensor = {hidden_states}")
 
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
@@ -333,34 +338,66 @@ class OPTDecoderLayer(nn.Module):
             layer_head_mask=layer_head_mask,
             output_attentions=output_attentions,
         )
+
+        print(f"a4 attn: norm = {hidden_states.norm()}, tensor = {hidden_states}")
+        
+        # dropout is not really changing anything
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+        
+        print(f"a4 attn + dropout: norm = {hidden_states.norm()}, tensor = {hidden_states}")
+
         hidden_states = residual + hidden_states
+
+        print(f"a4 attn + dropout + residual: norm = {hidden_states.norm()}, tensor = {hidden_states}")
 
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
             hidden_states = self.self_attn_layer_norm(hidden_states)
+            print(f"after ln after attn: {hidden_states.norm()}")
 
         # Fully Connected
         hidden_states_shape = hidden_states.shape
         hidden_states = hidden_states.reshape(-1, hidden_states.size(-1))
         residual = hidden_states
 
+        print(f"inside HF mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+        print(f"inside HF mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+        print(f"inside HF mlp: b4 ln input  = {hidden_states.shape}, {hidden_states.norm()}")
+
         # 125m, 1.7B, ..., 175B applies layer norm BEFORE attention
         if self.do_layer_norm_before:
             hidden_states = self.final_layer_norm(hidden_states)
 
-        hidden_states = self.fc1(hidden_states)
-        hidden_states = self.activation_fn(hidden_states)
+        print(f"inside HF mlp: a4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+        print(f"inside HF mlp: a4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+        print(f"inside HF mlp: a4 ln input  = {hidden_states.shape}, {hidden_states.norm()}")
+        
+        print(hidden_states)
 
+        hidden_states = self.fc1(hidden_states)
+
+        print(f"inside HF mlp: a4 fc1: {hidden_states.norm()}")
+ 
+        hidden_states = self.activation_fn(hidden_states)
+        print(f"after fc1 + act-fn: {self.activation_fn}, {hidden_states.norm()}")
+ 
         hidden_states = self.fc2(hidden_states)
+        print(f"after fc2: {hidden_states.norm()}")
+ 
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
+        print(f"after mlp: {hidden_states.norm()}")
+ 
         hidden_states = (residual + hidden_states).view(hidden_states_shape)
 
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
             hidden_states = self.final_layer_norm(hidden_states)
 
+        print(f"hf opt layer end :{hidden_states.norm()}")
+        exit(0)
+        #hf opt layer end (DS wrap) :78.3125 - layer 1
+        #hf opt layer end (no wrap) :78.31010437011719 - layer 1
         outputs = (hidden_states,)
 
         if output_attentions:
@@ -369,6 +406,8 @@ class OPTDecoderLayer(nn.Module):
         if use_cache:
             outputs += (present_key_value,)
 
+        #print(f"hf opt layer end :{outputs.norm()}")
+        #exit(0)
         return outputs
 
 
