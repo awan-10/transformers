@@ -380,17 +380,19 @@ class OPTDecoderLayer(nn.Module):
         print(f"inside HF mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
         print(f"inside HF mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
         print(f"inside HF mlp: b4 ln input  = {hidden_states.shape}, {hidden_states.norm()}")
+        print(f"inside HF mlp: b4 ln input tensor = {hidden_states}")
 
         # 125m, 1.7B, ..., 175B applies layer norm BEFORE attention
         if self.do_layer_norm_before:
+            print(f"self.final_layer_norm w norm = {self.final_layer_norm.weight.norm()}")
+            print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
             hidden_states = self.final_layer_norm(hidden_states)
 
         print(f"inside HF mlp: a4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
         print(f"inside HF mlp: a4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
         print(f"inside HF mlp: a4 ln input  = {hidden_states.shape}, {hidden_states.norm()}")
+        print(f"inside HF mlp: a4 ln input tensor = {hidden_states}")
         
-        print(hidden_states)
-
         hidden_states = self.fc1(hidden_states)
 
         print(f"inside HF mlp: a4 fc1: {hidden_states.norm()}")
@@ -401,6 +403,7 @@ class OPTDecoderLayer(nn.Module):
         hidden_states = self.fc2(hidden_states)
         print(f"after fc2: {hidden_states.norm()}")
  
+
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         print(f"after mlp: {hidden_states.norm()}")
  
@@ -414,7 +417,7 @@ class OPTDecoderLayer(nn.Module):
             hidden_states = self.final_layer_norm(hidden_states)
 
         print(f"hf opt layer end :{hidden_states.norm()}")
-        exit(0)
+        #exit(0)
         #hf opt layer end (DS wrap) :78.3125 - layer 1
         #hf opt layer end (no wrap) :78.31010437011719 - layer 1
         outputs = (hidden_states,)
@@ -427,11 +430,11 @@ class OPTDecoderLayer(nn.Module):
 
         #print(f"hf opt layer end :{outputs.norm()}")
         #exit(0)
-        print(f"hf final output: {outputs[0].norm()}")
-        print(f"hf key states: {outputs[1][0].norm()}")
-        print(f"hf value states: {outputs[1][1].norm()}")
+        #print(f"hf final output: {outputs[0].norm()}")
+        #print(f"hf key states: {outputs[1][0].norm()}")
+        #print(f"hf value states: {outputs[1][1].norm()}")
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         return outputs
 
