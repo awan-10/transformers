@@ -203,8 +203,14 @@ class OPTAttention(nn.Module):
             # if encoder bi-directional self-attention `past_key_value` is always `None`
             past_key_value = (key_states, value_states)
 
-        # print(f"key_states: {key_states.norm()}")
-        # print(f"value_states: {value_states.norm()}")
+        debug = True
+
+        if debug: print(f"hf attn: hidden_states = {hidden_states.norm()}")
+        if debug: print(f"hf attn: attention_mask = {attention_mask.norm()}")
+        if debug and layer_head_mask: print(f"hf attn: layer_head_mask = {layer_head_mask.norm()}")
+        if debug: print(f"hf attn: query_states = {query_states.norm()}")
+        if debug: print(f"hf attn: key_states = {key_states.norm()}")
+        if debug: print(f"hf attn: value_states = {value_states.norm()}")
 
         proj_shape = (bsz * self.num_heads, -1, self.head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
@@ -213,6 +219,12 @@ class OPTAttention(nn.Module):
 
         src_len = key_states.size(1)
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
+
+        if debug: print(f"hf attn: a4 view proj_shape = {proj_shape}")
+        if debug: print(f"hf attn: a4 view query_states = {query_states.norm()}")
+        if debug: print(f"hf attn: a4 view key_states = {key_states.norm()}")
+        if debug: print(f"hf attn: a4 view value_states = {value_states.norm()}")
+        if debug: print(f"hf attn: a4 bmm attn_weights = {attn_weights.norm()}")
 
         if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
             raise ValueError(
@@ -228,12 +240,15 @@ class OPTAttention(nn.Module):
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
             attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
-
+            if debug: print(f"hf attn: a4 attn_mask attn_weights = {attn_weights.norm()}")
+        
         # upcast to fp32 if the weights are in fp16. Please see https://github.com/huggingface/transformers/pull/17437
         if attn_weights.dtype == torch.float16:
             attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(torch.float16)
         else:
             attn_weights = nn.functional.softmax(attn_weights, dim=-1)
+
+        if debug: print(f"hf attn: a4 softmax attn_weights = {attn_weights.norm()}")
 
         if layer_head_mask is not None:
             if layer_head_mask.size() != (self.num_heads,):
@@ -243,6 +258,7 @@ class OPTAttention(nn.Module):
                 )
             attn_weights = layer_head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+            if debug: print(f"hf attn: a4 layer_head_mask attn_weights = {attn_weights.norm()}")
 
         if output_attentions:
             # this operation is a bit awkward, but it's required to
@@ -253,10 +269,13 @@ class OPTAttention(nn.Module):
             attn_weights = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
         else:
             attn_weights_reshaped = None
+        if debug: print(f"hf attn: a4 output_attentions attn_weights = {attn_weights.norm()}")
 
         attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
+        if debug: print(f"hf attn: attn_probs = {attn_probs.norm()}")
 
         attn_output = torch.bmm(attn_probs, value_states)
+        if debug: print(f"hf attn: a4 bmm attn_output = {attn_output.norm()}")
 
         if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
             raise ValueError(
@@ -266,25 +285,23 @@ class OPTAttention(nn.Module):
 
         attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
         attn_output = attn_output.transpose(1, 2)
+        if debug: print(f"hf attn: a4 transpose attn_output = {attn_output.norm()}")
 
         # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
         # partitioned aross GPUs when using tensor-parallelism.
         attn_output = attn_output.reshape(bsz, tgt_len, self.embed_dim)
+        if debug: print(f"hf attn: a4 reshape attn_output = {attn_output.norm()}")
 
-        debug = False
-        if debug: print(f"hf context_outputtn_ctx: {attn_output.norm()}")
-
-        #######
+        if debug: print("BIAS:" + str(self.bias))
+        if debug: print(type(self.out_proj))
         if debug: print(f"self.out_proj weight: {self.out_proj.weight.data.norm()}")
         if debug: print(f"self.out_proj bias: {self.out_proj.bias.data.norm()}")
         attn_output = self.out_proj(attn_output)
-        if debug: print("BIAS:" + str(self.bias))
-        if debug: print(type(self.out_proj))
 
-
-
-        #######
-        if debug: print(f"hf attn_output after out_proj: {attn_output.norm()}")
+        if debug: print(f"hf attn: return attn_output = {attn_output.norm()}")
+        if debug and attn_weights_reshaped: print(f"hf attn: return attn_weights_reshaped = {attn_weights_reshaped.norm()}")
+        if debug: print(f"hf attn: return past_key_value key = {past_key_value[0].norm()}")
+        if debug: print(f"hf attn: return past_key_value value = {past_key_value[1].norm()}")
 
         return attn_output, attn_weights_reshaped, past_key_value
 
