@@ -168,7 +168,6 @@ class OPTAttention(nn.Module):
         # if key_value_states are provided this layer is used as a cross-attention layer
         # for the decoder
         is_cross_attention = key_value_states is not None
-
         bsz, tgt_len, _ = hidden_states.size()
 
         # get query proj
@@ -203,14 +202,13 @@ class OPTAttention(nn.Module):
             # if encoder bi-directional self-attention `past_key_value` is always `None`
             past_key_value = (key_states, value_states)
 
-        debug = True
-
-        if debug: print(f"hf attn: hidden_states = {hidden_states.norm()}")
-        if debug: print(f"hf attn: attention_mask = {attention_mask.norm()}")
+        debug = False
+        if debug: print(f"hf attn: hidden_states = {hidden_states}, {hidden_states.norm()}")
+        if debug: print(f"hf attn: attention_mask = {attention_mask}, {attention_mask.norm()}")
         if debug and layer_head_mask: print(f"hf attn: layer_head_mask = {layer_head_mask.norm()}")
-        if debug: print(f"hf attn: query_states = {query_states.norm()}")
-        if debug: print(f"hf attn: key_states = {key_states.norm()}")
-        if debug: print(f"hf attn: value_states = {value_states.norm()}")
+        if debug: print(f"hf attn: query_states = {query_states}, {query_states.norm()}")
+        if debug: print(f"hf attn: key_states = {key_states}, {key_states.norm()}, {key_states.size()}")
+        if debug: print(f"hf attn: value_states = {value_states}, {value_states.norm()}")
 
         proj_shape = (bsz * self.num_heads, -1, self.head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
@@ -219,12 +217,13 @@ class OPTAttention(nn.Module):
 
         src_len = key_states.size(1)
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
+        if debug: print(f"hf attn: src_len = {src_len}")
 
         if debug: print(f"hf attn: a4 view proj_shape = {proj_shape}")
-        if debug: print(f"hf attn: a4 view query_states = {query_states.norm()}")
-        if debug: print(f"hf attn: a4 view key_states = {key_states.norm()}")
-        if debug: print(f"hf attn: a4 view value_states = {value_states.norm()}")
-        if debug: print(f"hf attn: a4 bmm attn_weights = {attn_weights.norm()}")
+        if debug: print(f"hf attn: a4 view query_states = {query_states}, {query_states.norm()}")
+        if debug: print(f"hf attn: a4 view key_states = {key_states},{key_states.norm()}, {key_states.size()}")
+        if debug: print(f"hf attn: a4 view value_states = {value_states},{value_states.norm()}")
+        if debug: print(f"hf attn: a4 bmm attn_weights = {attn_weights},{attn_weights.norm()}")
 
         if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
             raise ValueError(
@@ -233,6 +232,7 @@ class OPTAttention(nn.Module):
             )
 
         if attention_mask is not None:
+            if debug: print(f"hf attn: attention_mask = {attention_mask}")
             if attention_mask.size() != (bsz, 1, tgt_len, src_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
@@ -240,7 +240,7 @@ class OPTAttention(nn.Module):
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
             attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
-            if debug: print(f"hf attn: a4 attn_mask attn_weights = {attn_weights.norm()}")
+        if debug: print(f"hf attn: a4 attn_weights = {attn_weights}, {attn_weights.size()}")
         
         # upcast to fp32 if the weights are in fp16. Please see https://github.com/huggingface/transformers/pull/17437
         if attn_weights.dtype == torch.float16:
@@ -298,10 +298,10 @@ class OPTAttention(nn.Module):
         if debug: print(f"self.out_proj bias: {self.out_proj.bias.data.norm()}")
         attn_output = self.out_proj(attn_output)
 
-        if debug: print(f"hf attn: return attn_output = {attn_output.norm()}")
+        if debug: print(f"hf attn: return attn_output = {attn_output}, {attn_output.norm()}")
         if debug and attn_weights_reshaped: print(f"hf attn: return attn_weights_reshaped = {attn_weights_reshaped.norm()}")
-        if debug: print(f"hf attn: return past_key_value key = {past_key_value[0].norm()}")
-        if debug: print(f"hf attn: return past_key_value value = {past_key_value[1].norm()}")
+        if debug: print(f"hf attn: return past_key_value key = {past_key_value[0]}, {past_key_value[0].norm()}")
+        if debug: print(f"hf attn: return past_key_value value = {past_key_value[1]}, {past_key_value[1].norm()}")
 
         return attn_output, attn_weights_reshaped, past_key_value
 
@@ -406,35 +406,37 @@ class OPTDecoderLayer(nn.Module):
             if debug: print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
             hidden_states = self.final_layer_norm(hidden_states)
 
-        if debug: print(f"inside HF mlp: a4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
-        if debug: print(f"inside HF mlp: a4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+        if debug: print(f"inside HF mlp: a4 ln weight = {self.fc1.weight}, {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+        if debug: print(f"inside HF mlp: a4 ln bias   = {self.fc1.bias}, {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
         if debug: print(f"inside HF mlp: a4 ln input  = {hidden_states.shape}, {hidden_states.norm()}")
         if debug: print(f"inside HF mlp: a4 ln input tensor = {hidden_states}")
         
         hidden_states = self.fc1(hidden_states)
 
-        if debug: print(f"inside HF mlp: a4 fc1: {hidden_states.norm()}")
+        if debug: print(f"inside HF mlp: a4 fc1: {hidden_states}, {hidden_states.norm()}")
  
         hidden_states = self.activation_fn(hidden_states)
-        if debug: print(f"after fc1 + act-fn: {self.activation_fn}, {hidden_states.norm()}")
+
+        if debug: print(f"after relu: {hidden_states}, {hidden_states.norm()}")
  
         hidden_states = self.fc2(hidden_states)
-        if debug: print(f"after fc2: {hidden_states.norm()}")
- 
+        if debug: print(f"hf mlp: fc2 weight = {self.fc2.weight.shape}, {self.fc2.weight.norm()}")
+        if debug: print(f"hf mlp: fc2 bias   = {self.fc2.bias.shape}, {self.fc2.bias.norm()}")
+        if debug: print(f"after fc2: {hidden_states}, {hidden_states.norm()}")
 
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         if debug: print(f"after mlp: {hidden_states.norm()}")
  
         hidden_states = (residual + hidden_states).view(hidden_states_shape)
 
-        if debug: print(f"hf residual: {residual.norm()}")
+        if debug: print(f"hf residual: {residual}, {residual.norm()}")
         if debug: print(f"hf output after mlp: {hidden_states.norm()}")
 
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
             hidden_states = self.final_layer_norm(hidden_states)
 
-        if debug: print(f"hf opt layer end :{hidden_states.norm()}")
+        if debug: print(f"hf opt layer end : {hidden_states}, {hidden_states.norm()}")
         #exit(0)
         #hf opt layer end (DS wrap) :78.3125 - layer 1
         #hf opt layer end (no wrap) :78.31010437011719 - layer 1
