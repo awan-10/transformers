@@ -171,7 +171,8 @@ class OPTAttention(nn.Module):
         bsz, tgt_len, _ = hidden_states.size()
 
         # get query proj
-        query_states = self.q_proj(hidden_states) * self.scaling
+        query_states = torch.matmul(hidden_states,self.q_proj.weight.transpose(0, 1)).add(self.q_proj.bias)
+        query_states = query_states * self.scaling
         # get key, value proj
         if is_cross_attention and past_key_value is not None:
             # reuse k,v, cross_attentions
@@ -183,14 +184,18 @@ class OPTAttention(nn.Module):
             value_states = self._shape(self.v_proj(key_value_states), -1, bsz)
         elif past_key_value is not None:
             # reuse k, v, self_attention
-            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+            key_states = torch.matmul(hidden_states,self.k_proj.weight.transpose(0, 1)).add(self.k_proj.bias)
+            value_states = torch.matmul(hidden_states,self.v_proj.weight.transpose(0, 1)).add(self.v_proj.bias)
+            key_states = self._shape(key_states, -1, bsz)
+            value_states = self._shape(value_states, -1, bsz)
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
         else:
             # self_attention
-            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+            key_states = torch.matmul(hidden_states,self.k_proj.weight.transpose(0, 1)).add(self.k_proj.bias)
+            value_states = torch.matmul(hidden_states,self.v_proj.weight.transpose(0, 1)).add(self.v_proj.bias)
+            key_states = self._shape(key_states, -1, bsz)
+            value_states = self._shape(value_states, -1, bsz)
 
         if self.is_decoder:
             # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
@@ -296,7 +301,8 @@ class OPTAttention(nn.Module):
         if debug: print(type(self.out_proj))
         if debug: print(f"self.out_proj weight: {self.out_proj.weight.data.norm()}")
         if debug: print(f"self.out_proj bias: {self.out_proj.bias.data.norm()}")
-        attn_output = self.out_proj(attn_output)
+        #attn_output = self.out_proj(attn_output)
+        attn_output = torch.matmul(attn_output,self.out_proj.weight.transpose(0, 1)).add(self.out_proj.bias)
 
         if debug: print(f"hf attn: return attn_output = {attn_output}, {attn_output.norm()}")
         if debug and attn_weights_reshaped: print(f"hf attn: return attn_weights_reshaped = {attn_weights_reshaped.norm()}")
@@ -411,7 +417,8 @@ class OPTDecoderLayer(nn.Module):
         if debug: print(f"inside HF mlp: a4 ln input  = {hidden_states.shape}, {hidden_states.norm()}")
         if debug: print(f"inside HF mlp: a4 ln input tensor = {hidden_states}")
         
-        hidden_states = self.fc1(hidden_states)
+        #hidden_states = self.fc1(hidden_states)
+        hidden_states = torch.matmul(hidden_states,self.fc1.weight.transpose(0, 1)).add(self.fc1.bias)
 
         if debug: print(f"inside HF mlp: a4 fc1: {hidden_states}, {hidden_states.norm()}")
  
@@ -419,7 +426,8 @@ class OPTDecoderLayer(nn.Module):
 
         if debug: print(f"after relu: {hidden_states}, {hidden_states.norm()}")
  
-        hidden_states = self.fc2(hidden_states)
+        #hidden_states = self.fc2(hidden_states)
+        hidden_states = torch.matmul(hidden_states,self.fc2.weight.transpose(0, 1)).add(self.fc2.bias)
         if debug: print(f"hf mlp: fc2 weight = {self.fc2.weight.shape}, {self.fc2.weight.norm()}")
         if debug: print(f"hf mlp: fc2 bias   = {self.fc2.bias.shape}, {self.fc2.bias.norm()}")
         if debug: print(f"after fc2: {hidden_states}, {hidden_states.norm()}")
