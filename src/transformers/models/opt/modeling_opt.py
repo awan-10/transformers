@@ -352,8 +352,11 @@ class OPTDecoderLayer(nn.Module):
                 (see `past_key_values`).
             past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
         """
-        debug = False
-        if debug: print(f"b4 ln: norm = {hidden_states.norm()}, tensor = {hidden_states}")
+        debug = True
+        print_tensors = False
+
+        if debug: print(f"b4 ln: norm = {hidden_states.norm()}")
+        if print_tensors: print(f"b4 ln: tensor = {hidden_states}")
 
         residual = hidden_states
 
@@ -363,7 +366,8 @@ class OPTDecoderLayer(nn.Module):
         if self.do_layer_norm_before:
             hidden_states = self.self_attn_layer_norm(hidden_states)
 
-        if debug: print(f"a4 ln: norm = {hidden_states.norm()}, tensor = {hidden_states}")
+        if debug: print(f"a4 ln: norm = {hidden_states.norm()}")
+        if print_tensors: print(f"a4 ln: tensor = {hidden_states}")
 
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
@@ -374,21 +378,25 @@ class OPTDecoderLayer(nn.Module):
             output_attentions=output_attentions,
         )
 
-        if debug: print(f"a4 attn: norm = {hidden_states.norm()}, tensor = {hidden_states}")
-        
+        if debug: print(f"a4 attn: norm = {hidden_states.norm()}")
+        if print_tensors: print(f"a4 attn: tensor = {hidden_states}")   
+
         # dropout is not really changing anything
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         
-        if debug: print(f"a4 attn + dropout: norm = {hidden_states.norm()}, tensor = {hidden_states}")
+        if debug: print(f"a4 attn + dropout: norm = {hidden_states.norm()}")
+        if print_tensors: print(f"a4 attn + dropout: tensor = {hidden_states}")
 
         hidden_states = residual + hidden_states
 
-        if debug: print(f"a4 attn + dropout + residual: norm = {hidden_states.norm()}, tensor = {hidden_states}")
+        if debug: print(f"a4 attn + dropout + residual: norm = {hidden_states.norm()}")
+        if print_tensors: print(f"a4 attn + dropout + residual: tensor = {hidden_states}")
 
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
             hidden_states = self.self_attn_layer_norm(hidden_states)
             if debug: print(f"after ln after attn: {hidden_states.norm()}")
+            if print_tensors: print(f"after ln after attn: {hidden_states}")
 
         # Fully Connected
         hidden_states_shape = hidden_states.shape
@@ -398,7 +406,7 @@ class OPTDecoderLayer(nn.Module):
         if debug: print(f"inside HF mlp: b4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
         if debug: print(f"inside HF mlp: b4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
         if debug: print(f"inside HF mlp: b4 ln input  = {hidden_states.shape}, {hidden_states.norm()}")
-        if debug: print(f"inside HF mlp: b4 ln input tensor = {hidden_states}")
+        if print_tensors: print(f"inside HF mlp: b4 ln input tensor = {hidden_states}")
 
         # 125m, 1.7B, ..., 175B applies layer norm BEFORE attention
         if self.do_layer_norm_before:
@@ -406,37 +414,42 @@ class OPTDecoderLayer(nn.Module):
             if debug: print(f"self.final_layer_norm b norm = {self.final_layer_norm.bias.norm()}")
             hidden_states = self.final_layer_norm(hidden_states)
 
-        if debug: print(f"inside HF mlp: a4 ln weight = {self.fc1.weight}, {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
-        if debug: print(f"inside HF mlp: a4 ln bias   = {self.fc1.bias}, {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
+        if debug: print(f"inside HF mlp: a4 ln weight = {self.fc1.weight.shape}, {self.fc1.weight.norm()}")
+        if debug: print(f"inside HF mlp: a4 ln bias   = {self.fc1.bias.shape}, {self.fc1.bias.norm()}")
         if debug: print(f"inside HF mlp: a4 ln input  = {hidden_states.shape}, {hidden_states.norm()}")
-        if debug: print(f"inside HF mlp: a4 ln input tensor = {hidden_states}")
+        if print_tensors: print(f"inside HF mlp: a4 ln input tensor = {hidden_states}, weight = {self.fc1.weight}, bias = {self.fc1.bias}")
         
         hidden_states = self.fc1(hidden_states)
 
-        if debug: print(f"inside HF mlp: a4 fc1: {hidden_states}, {hidden_states.norm()}")
- 
+        if debug: print(f"inside HF mlp: a4 fc1: {hidden_states.norm()}")
+        if print_tensors: print(f"inside HF mlp: a4 fc1: {hidden_states}")
+
         hidden_states = self.activation_fn(hidden_states)
 
-        if debug: print(f"after relu: {hidden_states}, {hidden_states.norm()}")
- 
+        if debug: print(f"after relu: {hidden_states.norm()}")
+        if print_tensors: print(f"after relu: {hidden_states}")
+
         hidden_states = self.fc2(hidden_states)
         if debug: print(f"hf mlp: fc2 weight = {self.fc2.weight.shape}, {self.fc2.weight.norm()}")
         if debug: print(f"hf mlp: fc2 bias   = {self.fc2.bias.shape}, {self.fc2.bias.norm()}")
-        if debug: print(f"after fc2: {hidden_states}, {hidden_states.norm()}")
+        if debug: print(f"after fc2: {hidden_states.norm()}")
+        if print_tensors: print(f"after fc2: {hidden_states}, weight = {self.fc2.weight}, bias = {self.fc2.bias}")
 
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         if debug: print(f"after mlp: {hidden_states.norm()}")
  
         hidden_states = (residual + hidden_states).view(hidden_states_shape)
 
-        if debug: print(f"hf residual: {residual}, {residual.norm()}")
+        if debug: print(f"hf residual: {residual.norm()}")
+        if print_tensors: print(f"hf residual: {residual}")
         if debug: print(f"hf output after mlp: {hidden_states.norm()}")
 
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
             hidden_states = self.final_layer_norm(hidden_states)
 
-        if debug: print(f"hf opt layer end : {hidden_states}, {hidden_states.norm()}")
+        if debug: print(f"hf opt layer end : {hidden_states.norm()}")
+        if print_tensors: print(f"hf opt layer end : {hidden_states}")
         #exit(0)
         #hf opt layer end (DS wrap) :78.3125 - layer 1
         #hf opt layer end (no wrap) :78.31010437011719 - layer 1
