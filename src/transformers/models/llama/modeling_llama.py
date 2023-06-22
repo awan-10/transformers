@@ -198,12 +198,22 @@ class LlamaAttention(nn.Module):
         key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
 
+        debug = True
+        if debug: print(f"hf attn: hidden_states = {hidden_states}, {hidden_states.norm()}, {hidden_states.size()}")
+        if debug: print(f"hf attn: query_states = {query_states}, {query_states.norm()}")
+        if debug: print(f"hf attn: key_states = {key_states}, {key_states.norm()}, {key_states.size()}")
+        if debug: print(f"hf attn: value_states = {value_states}, {value_states.norm()}")
+
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
         # [bsz, nh, t, hd]
+
+        if debug: print(f"hf attn: rotary query_states = {query_states}, {query_states.norm()}")
+        if debug: print(f"hf attn: rotary key_states = {key_states}, {key_states.norm()}")
 
         if past_key_value is not None:
             # reuse k, v, self_attention
@@ -211,8 +221,11 @@ class LlamaAttention(nn.Module):
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
         past_key_value = (key_states, value_states) if use_cache else None
+        if debug: print(f"hf attn: past_key_value[0] = {past_key_value[0]}, {past_key_value[0].norm()}")
+        if debug: print(f"hf attn: past_key_value[1] = {past_key_value[1]}, {past_key_value[1].norm()}")
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        if debug: print(f"hf attn: attn_weights = {attn_weights}, {attn_weights.norm()}")
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
             raise ValueError(
@@ -227,10 +240,13 @@ class LlamaAttention(nn.Module):
                 )
             attn_weights = attn_weights + attention_mask
             attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
+            if debug: print(f"hf attn: a4 attn mask attn_weights = {attn_weights}, {attn_weights.norm()}")
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_output = torch.matmul(attn_weights, value_states)
+        if debug: print(f"hf attn: a4 softmax attn_weights = {attn_weights}, {attn_weights.norm()}")
+        if debug: print(f"hf attn: a4 softmax attn_output = {attn_output}, {attn_output.norm()}")
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
@@ -242,6 +258,8 @@ class LlamaAttention(nn.Module):
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
         attn_output = self.o_proj(attn_output)
+        if debug: print(f"hf attn: self.o_proj weight: {self.o_proj.weight.data.norm()}")
+        if debug: print(f"hf attn: a4 o_proj attn_output = {attn_output}, {attn_output.norm()}")
 
         if not output_attentions:
             attn_weights = None
@@ -517,6 +535,9 @@ class LlamaModel(LlamaPreTrainedModel):
         if past_key_values is not None:
             past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
+
+        debug = True
+        if debug: print(f"seq_length = {seq_length}")
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
