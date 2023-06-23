@@ -155,6 +155,11 @@ class LlamaMLP(nn.Module):
         self.act_fn = ACT2FN[hidden_act]
 
     def forward(self, x):
+        debug = False
+        if debug: print(f'hf gate_proj weights ={self.gate_proj.weight.data}, {torch.norm(self.gate_proj.weight.data)}')
+        if debug: print(f'hf up_proj weights ={self.up_proj.weight.data}, {torch.norm(self.up_proj.weight.data)}')
+        if debug: print(f'hf down_proj weights ={self.down_proj.weight.data}, {torch.norm(self.down_proj.weight.data)}')
+
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
@@ -198,7 +203,7 @@ class LlamaAttention(nn.Module):
         key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
 
-        debug = True
+        debug = False
         if debug: print(f"hf attn: hidden_states = {hidden_states}, {hidden_states.norm()}, {hidden_states.size()}")
         if debug: print(f"hf attn: query_states = {query_states}, {query_states.norm()}")
         if debug: print(f"hf attn: key_states = {key_states}, {key_states.norm()}, {key_states.size()}")
@@ -209,6 +214,9 @@ class LlamaAttention(nn.Module):
             kv_seq_len += past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
+        if debug: print(f"hf attn: b4 rotary cos = {cos}")
+        if debug: print(f"hf attn: b4 rotary sin = {sin}")
+        if debug: print(f"hf attn: b4 rotary position_ids = {position_ids}")
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
         # [bsz, nh, t, hd]
 
@@ -317,13 +325,21 @@ class LlamaDecoderLayer(nn.Module):
             use_cache=use_cache,
         )
         hidden_states = residual + hidden_states
+        debug = False
+        if debug: print(f'hf a4 residual add: hidden_states ={hidden_states}, {torch.norm(hidden_states)}')
 
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
+        if debug: print(f'hf post attn ln weights ={self.post_attention_layernorm.weight.data}, {torch.norm(self.post_attention_layernorm.weight.data)}')
+        if debug: print(f'hf a4 post attn ln: hidden_states ={hidden_states}, {torch.norm(hidden_states)}')
 
+        hidden_states = self.mlp(hidden_states)
+        if debug: print(f'hf a4 mlp: hidden_states ={hidden_states}, {torch.norm(hidden_states)}')
+
+        hidden_states = residual + hidden_states
+        if debug: print(f'hf a4 residual add 2: hidden_states ={hidden_states}, {torch.norm(hidden_states)}')
+    
         outputs = (hidden_states,)
 
         if output_attentions:
@@ -536,9 +552,12 @@ class LlamaModel(LlamaPreTrainedModel):
             past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
-        debug = True
+        debug = False
         if debug: print(f"seq_length = {seq_length}")
 
+        if debug: print(f"hf attn: b4 position_ids seq_length_with_past = {seq_length_with_past}")
+        if debug: print(f"hf attn: b4 position_ids past_key_values_length = {past_key_values_length}")
+        if debug: print(f"hf attn: b4 position_ids position_ids = {position_ids}")
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
